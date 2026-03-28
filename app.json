@@ -2,6 +2,7 @@
   "expo": {
     "name": "InstantAppA4",
     "slug": "InstantAppA4",
+    "scheme": "instantappa4",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,9 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.love4.instantappa4"
     },
     "android": {
+      "package": "com.love4.instantappa4",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -25,6 +28,16 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "supabaseUrl": "",
+      "supabaseAnonKey": "",
+      "eas": {
+        "projectId": "36ce5f35-5c47-4d05-82ba-823d4f8905aa"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

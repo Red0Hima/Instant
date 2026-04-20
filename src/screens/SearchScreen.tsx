@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { FlatList, Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Avatar } from '../components/Avatar';
 import { useApp } from '../context/AppContext';
@@ -6,11 +7,12 @@ import { useApp } from '../context/AppContext';
 export function SearchScreen() {
   const { posts, profiles, themeColors } = useApp();
   const [query, setQuery] = useState('');
+  const cleanQuery = query.trim().toLowerCase();
+  const hasQuery = cleanQuery.length > 0;
 
   const filteredUsers = useMemo(() => {
-    const cleanQuery = query.trim().toLowerCase();
-    if (!cleanQuery) {
-      return profiles;
+    if (!hasQuery) {
+      return [];
     }
 
     return profiles.filter((user) => {
@@ -19,12 +21,11 @@ export function SearchScreen() {
         user.fullName.toLowerCase().includes(cleanQuery)
       );
     });
-  }, [profiles, query]);
+  }, [profiles, cleanQuery, hasQuery]);
 
   const filteredPosts = useMemo(() => {
-    const cleanQuery = query.trim().toLowerCase();
-    if (!cleanQuery) {
-      return posts;
+    if (!hasQuery) {
+      return [];
     }
 
     return posts.filter((post) => {
@@ -35,7 +36,7 @@ export function SearchScreen() {
         author?.fullName.toLowerCase().includes(cleanQuery)
       );
     });
-  }, [posts, query]);
+  }, [posts, cleanQuery, hasQuery]);
 
   return (
     <View style={[styles.container, { backgroundColor: themeColors.background }]}>
@@ -48,28 +49,42 @@ export function SearchScreen() {
         placeholderTextColor={themeColors.muted}
       />
 
-      <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Usuarios</Text>
-      <FlatList
-        data={filteredUsers}
-        keyExtractor={(item) => item.id}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.users}
-        renderItem={({ item }) => <Avatar user={item} showUsername />}
-        ListEmptyComponent={<Text style={{ color: themeColors.muted }}>Sin resultados</Text>}
-      />
+      {!hasQuery ? (
+        <Text style={[styles.searchHint, { color: themeColors.muted }]}>Escribe para empezar a buscar.</Text>
+      ) : (
+        <>
+          <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Usuarios</Text>
+          <FlatList
+            data={filteredUsers}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.users}
+            renderItem={({ item }) => <Avatar user={item} showUsername />}
+            ListEmptyComponent={<Text style={{ color: themeColors.muted }}>Sin resultados</Text>}
+          />
 
-      <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Publicaciones</Text>
+          <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Publicaciones</Text>
 
-      <FlatList
-        data={filteredPosts}
-        keyExtractor={(item) => item.id}
-        numColumns={3}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.grid}
-        renderItem={({ item }) => <Image source={{ uri: item.imageUrl }} style={[styles.image, { backgroundColor: themeColors.chip }]} />}
-        ListEmptyComponent={<Text style={{ color: themeColors.muted, textAlign: 'center', marginTop: 20 }}>Sin publicaciones</Text>}
-      />
+          <FlatList
+            data={filteredPosts}
+            keyExtractor={(item) => item.id}
+            numColumns={3}
+            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={styles.grid}
+            renderItem={({ item }) =>
+              item.mediaType === 'video' ? (
+                <View style={[styles.image, styles.videoPlaceholder, { backgroundColor: themeColors.chip }]}>
+                  <Ionicons name="play-circle" size={30} color={themeColors.text} />
+                </View>
+              ) : (
+                <Image source={{ uri: item.imageUrl }} style={[styles.image, { backgroundColor: themeColors.chip }]} />
+              )
+            }
+            ListEmptyComponent={<Text style={{ color: themeColors.muted, textAlign: 'center', marginTop: 20 }}>Sin publicaciones</Text>}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -99,6 +114,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 12,
   },
+  searchHint: {
+    marginTop: 18,
+    paddingHorizontal: 12,
+  },
   users: {
     paddingHorizontal: 10,
     gap: 10,
@@ -114,5 +133,9 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     borderRadius: 10,
+  },
+  videoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

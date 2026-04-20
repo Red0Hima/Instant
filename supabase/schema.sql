@@ -105,6 +105,12 @@ create policy "User can delete own posts"
 on public.posts for delete
 using (auth.uid() = user_id);
 
+-- Keep this email equal to EXPO_PUBLIC_ADMIN_EMAIL in your app config.
+drop policy if exists "Admin can delete any post" on public.posts;
+create policy "Admin can delete any post"
+on public.posts for delete
+using (lower(coalesce(auth.jwt() ->> 'email', '')) = lower('admin@example.com'));
+
 -- likes
 drop policy if exists "Likes are readable by everyone" on public.likes;
 create policy "Likes are readable by everyone"
@@ -136,6 +142,12 @@ drop policy if exists "User can delete own comments" on public.comments;
 create policy "User can delete own comments"
 on public.comments for delete
 using (auth.uid() = user_id);
+
+-- Keep this email equal to EXPO_PUBLIC_ADMIN_EMAIL in your app config.
+drop policy if exists "Admin can delete any comment" on public.comments;
+create policy "Admin can delete any comment"
+on public.comments for delete
+using (lower(coalesce(auth.jwt() ->> 'email', '')) = lower('admin@example.com'));
 
 -- follows
 drop policy if exists "Follows are readable by everyone" on public.follows;
@@ -202,3 +214,11 @@ drop policy if exists "Users delete own posts" on storage.objects;
 create policy "Users delete own posts"
 on storage.objects for delete
 using (bucket_id = 'posts' and owner = auth.uid());
+
+drop policy if exists "Admin delete any post file" on storage.objects;
+create policy "Admin delete any post file"
+on storage.objects for delete
+using (
+  bucket_id = 'posts'
+  and lower(coalesce(auth.jwt() ->> 'email', '')) = lower('admin@example.com')
+);

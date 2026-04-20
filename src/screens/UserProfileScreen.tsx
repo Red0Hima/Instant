@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { Alert, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useApp } from '../context/AppContext';
 import { Avatar } from '../components/Avatar';
@@ -96,7 +97,15 @@ export function UserProfileScreen({ route }: UserProfileScreenProps) {
           <Text style={[styles.section, { color: themeColors.text }]}>Publicaciones</Text>
         </View>
       }
-      renderItem={({ item }) => <Image source={{ uri: item.imageUrl }} style={[styles.postImage, { backgroundColor: themeColors.chip }]} />}
+      renderItem={({ item }) =>
+        item.mediaType === 'video' ? (
+          <View style={[styles.postImage, styles.videoPlaceholder, { backgroundColor: themeColors.chip }]}>
+            <Ionicons name="play-circle" size={30} color={themeColors.text} />
+          </View>
+        ) : (
+          <Image source={{ uri: item.imageUrl }} style={[styles.postImage, { backgroundColor: themeColors.chip }]} />
+        )
+      }
       ListEmptyComponent={<Text style={{ color: themeColors.muted, textAlign: 'center', marginTop: 20 }}>Este usuario aun no publica.</Text>}
     />
   );
@@ -164,5 +173,9 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     borderRadius: 10,
+  },
+  videoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

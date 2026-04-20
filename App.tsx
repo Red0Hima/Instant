@@ -11,7 +11,6 @@ import { CreatePostScreen } from './src/screens/CreatePostScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
-import { ReelsScreen } from './src/screens/ReelsScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { UserProfileScreen } from './src/screens/UserProfileScreen';
 import type { RootStackParamList } from './src/navigation/types';
@@ -26,6 +25,7 @@ function AppTabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        lazy: true,
         tabBarActiveTintColor: themeColors.primaryDark,
         tabBarInactiveTintColor: themeColors.muted,
         tabBarStyle: {
@@ -37,7 +37,6 @@ function AppTabs() {
             Inicio: 'home-outline',
             Buscar: 'search-outline',
             Crear: 'add-circle-outline',
-            Reels: 'play-circle-outline',
             Perfil: 'person-outline',
           };
           return <Ionicons name={icons[route.name]} size={size} color={color} />;
@@ -47,7 +46,6 @@ function AppTabs() {
       <Tab.Screen name="Inicio" component={HomeScreen} />
       <Tab.Screen name="Buscar" component={SearchScreen} />
       <Tab.Screen name="Crear" component={CreatePostScreen} />
-      <Tab.Screen name="Reels" component={ReelsScreen} />
       <Tab.Screen name="Perfil" component={ProfileScreen} />
     </Tab.Navigator>
   );

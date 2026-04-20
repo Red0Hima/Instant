@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,9 +18,10 @@ type PostCardProps = {
 };
 
 export function PostCard({ post }: PostCardProps) {
-  const { toggleLike, addComment, themeColors } = useApp();
+  const { isAdmin, toggleLike, addComment, deletePost, deleteComment, themeColors } = useApp();
   const author = post.author;
   const [commentText, setCommentText] = useState('');
+  const commentInputRef = useRef<TextInput | null>(null);
 
   if (!author) {
     return null;
@@ -31,9 +32,38 @@ export function PostCard({ post }: PostCardProps) {
       <View style={styles.header}>
         <Avatar user={author} size={36} />
         <Text style={[styles.headerUsername, { color: themeColors.text }]}>{author.username}</Text>
+        {isAdmin ? (
+          <Pressable
+            style={[styles.adminDeleteButton, { borderColor: themeColors.danger }]}
+            onPress={() => {
+              Alert.alert('Eliminar publicacion', 'Esta accion no se puede deshacer.', [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Eliminar',
+                  style: 'destructive',
+                  onPress: async () => {
+                    const result = await deletePost(post.id);
+                    if (!result.ok) {
+                      Alert.alert('No se pudo eliminar', result.message);
+                    }
+                  },
+                },
+              ]);
+            }}
+          >
+            <Text style={[styles.adminDeleteText, { color: themeColors.danger }]}>Eliminar</Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      <Image source={{ uri: post.imageUrl }} style={[styles.postImage, { backgroundColor: themeColors.chip }]} />
+      {post.mediaType === 'video' ? (
+        <View style={[styles.videoPlaceholder, { backgroundColor: themeColors.chip }]}>
+          <Ionicons name="play-circle" size={44} color={themeColors.text} />
+          <Text style={{ color: themeColors.text, marginTop: 6, fontWeight: '700' }}>Video</Text>
+        </View>
+      ) : (
+        <Image source={{ uri: post.imageUrl }} style={[styles.postImage, { backgroundColor: themeColors.chip }]} />
+      )}
 
       <View style={styles.actions}>
         <Pressable onPress={() => toggleLike(post.id, post.likedByMe)} style={styles.iconButton}>
@@ -43,28 +73,47 @@ export function PostCard({ post }: PostCardProps) {
             color={post.likedByMe ? themeColors.danger : themeColors.text}
           />
         </Pressable>
-        <Ionicons name="chatbubble-outline" size={22} color={themeColors.text} />
+        <Pressable onPress={() => commentInputRef.current?.focus()} style={styles.iconButton}>
+          <Ionicons name="chatbubble-outline" size={22} color={themeColors.text} />
+        </Pressable>
         <Ionicons name="paper-plane-outline" size={22} color={themeColors.text} />
       </View>
 
       <Text style={[styles.likes, { color: themeColors.text }]}>{post.likeCount} me gusta</Text>
-      <Text style={[styles.caption, { color: themeColors.text }]}>
-        <Text style={styles.bold}>{author.username} </Text>
-        {post.caption}
-      </Text>
+      {post.caption.trim().length > 0 ? (
+        <Text style={[styles.caption, { color: themeColors.text }]}>
+          <Text style={styles.bold}>{author.username} </Text>
+          {post.caption}
+        </Text>
+      ) : null}
       <Text style={[styles.time, { color: themeColors.muted }]}>{post.createdAt}</Text>
 
       {post.comments.map((comment) => {
         return (
-          <Text style={[styles.comment, { color: themeColors.text }]} key={comment.id}>
-            <Text style={styles.bold}>{comment.author?.username ?? 'usuario'} </Text>
-            {comment.text}
-          </Text>
+          <View key={comment.id} style={styles.commentWrap}>
+            <Text style={[styles.comment, { color: themeColors.text }]}>
+              <Text style={styles.bold}>{comment.author?.username ?? 'usuario'} </Text>
+              {comment.text}
+            </Text>
+            {isAdmin ? (
+              <Pressable
+                onPress={async () => {
+                  const result = await deleteComment(post.id, comment.id);
+                  if (!result.ok) {
+                    Alert.alert('No se pudo eliminar', result.message);
+                  }
+                }}
+              >
+                <Text style={[styles.commentDelete, { color: themeColors.danger }]}>Eliminar</Text>
+              </Pressable>
+            ) : null}
+          </View>
         );
       })}
 
       <View style={[styles.commentRow, { borderTopColor: themeColors.border }]}>
         <TextInput
+          ref={commentInputRef}
           placeholder="Agrega un comentario..."
           placeholderTextColor={themeColors.muted}
           value={commentText}
@@ -102,12 +151,29 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
   },
+  adminDeleteButton: {
+    marginLeft: 'auto',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  adminDeleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   headerUsername: {
     fontWeight: '700',
   },
   postImage: {
     width: '100%',
     height: 340,
+  },
+  videoPlaceholder: {
+    width: '100%',
+    height: 340,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actions: {
     flexDirection: 'row',
@@ -137,8 +203,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   comment: {
-    paddingHorizontal: 10,
+    flex: 1,
     paddingTop: 6,
+  },
+  commentWrap: {
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  commentDelete: {
+    paddingTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
   },
   commentRow: {
     flexDirection: 'row',

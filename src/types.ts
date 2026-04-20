@@ -23,6 +23,7 @@ export type Post = {
   userId: string;
   caption: string;
   imageUrl: string;
+  mediaType: 'image' | 'video';
   createdAt: string;
   author: Profile | null;
   likeCount: number;

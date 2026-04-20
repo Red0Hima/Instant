@@ -48,7 +48,7 @@ export function CreatePostScreen() {
         ]}
         value={caption}
         onChangeText={setCaption}
-        placeholder="Escribe un caption"
+        placeholder="Escribe un caption (opcional)"
         placeholderTextColor={themeColors.muted}
         multiline
       />

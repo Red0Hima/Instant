@@ -8,11 +8,13 @@ import { getThemeColors, type ThemeColors } from '../theme/colors';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 type Result = { ok: true; message?: string } | { ok: false; message: string };
+type Permission = 'admin';
 
 type AppContextValue = {
   isReady: boolean;
   isConfigured: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isPasswordRecovery: boolean;
   errorMessage: string | null;
   currentUser: Profile | null;
@@ -30,10 +32,13 @@ type AppContextValue = {
   createPost: (imageUri: string, caption: string) => Promise<Result>;
   toggleLike: (postId: string, likedByMe: boolean) => Promise<void>;
   addComment: (postId: string, text: string) => Promise<Result>;
+  deletePost: (postId: string) => Promise<Result>;
+  deleteComment: (postId: string, commentId: string) => Promise<Result>;
   toggleFollow: (targetUserId: string) => Promise<Result>;
   isFollowing: (targetUserId: string) => boolean;
   followerCount: (userId: string) => number;
   followingCount: (userId: string) => number;
+  hasPermission: (permission: Permission) => boolean;
   updateProfile: (data: { fullName: string; username: string; bio: string }) => Promise<Result>;
   updateTheme: (theme: ThemeMode) => Promise<Result>;
   updateAvatar: (imageUri: string) => Promise<Result>;
@@ -68,11 +73,15 @@ function mapProfile(row: any): Profile {
 function mapPost(row: any, currentUserId: string | null): Post {
   const likes = Array.isArray(row.likes) ? row.likes : [];
   const comments = Array.isArray(row.comments) ? row.comments : [];
+  const mediaType = /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i.test(String(row.image_url ?? ''))
+    ? 'video'
+    : 'image';
   return {
     id: row.id,
     userId: row.user_id,
     caption: row.caption,
     imageUrl: row.image_url,
+    mediaType,
     createdAt: toIsoDate(row.created_at),
     author: row.author ? mapProfile(row.author) : null,
     likeCount: likes.length,
@@ -96,6 +105,21 @@ function mapFollow(row: any): Follow {
     followingId: row.following_id,
     createdAt: row.created_at,
   };
+}
+
+function getStorageObjectPathFromPublicUrl(url: string, bucket: 'avatars' | 'posts') {
+  try {
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    const index = url.indexOf(marker);
+    if (index === -1) {
+      return null;
+    }
+
+    const pathWithQuery = url.slice(index + marker.length);
+    return pathWithQuery.split('?')[0].split('#')[0];
+  } catch {
+    return null;
+  }
 }
 
 async function uploadFileToBucket(bucket: 'avatars' | 'posts', path: string, imageUri: string) {
@@ -130,6 +154,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const theme: ThemeMode = currentUser?.theme ?? 'light';
   const themeColors = getThemeColors(theme);
+  const adminEmail = (process.env.EXPO_PUBLIC_ADMIN_EMAIL ?? '').trim().toLowerCase();
+  const currentEmail = (session?.user?.email ?? '').trim().toLowerCase();
+  const isAdmin = Boolean(adminEmail && currentEmail && currentEmail === adminEmail);
+
+  const hasPermission = (permission: Permission) => {
+    if (permission === 'admin') {
+      return isAdmin;
+    }
+    return false;
+  };
 
   const fetchProfiles = async () => {
     const { data, error } = await supabase
@@ -173,6 +207,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return (data ?? []).map((row) => mapPost(row, currentUserId));
+  };
+
+  const fetchPostById = async (postId: string, currentUserId: string | null) => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(
+        `
+        id,
+        user_id,
+        caption,
+        image_url,
+        created_at,
+        author:profiles!posts_user_id_fkey(id, username, full_name, bio, avatar_url, theme),
+        likes(user_id),
+        comments(
+          id,
+          post_id,
+          user_id,
+          text,
+          created_at,
+          author:profiles!comments_user_id_fkey(id, username, full_name, bio, avatar_url, theme)
+        )
+      `,
+      )
+      .eq('id', postId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return mapPost(data, currentUserId);
+  };
+
+  const upsertPostLocally = (nextPost: Post) => {
+    setPosts((currentPosts) => {
+      const index = currentPosts.findIndex((post) => post.id === nextPost.id);
+      if (index === -1) {
+        return [nextPost, ...currentPosts];
+      }
+
+      const updatedPosts = [...currentPosts];
+      updatedPosts[index] = nextPost;
+      return updatedPosts;
+    });
   };
 
   const fetchFollows = async () => {
@@ -343,12 +426,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const currentUserId = session?.user?.id ?? null;
+
+    const refreshProfilesOnly = async () => {
+      try {
+        const nextProfiles = await fetchProfiles();
+        const profileMap = new Map(nextProfiles.map((profile) => [profile.id, profile]));
+        setProfiles(nextProfiles);
+        setCurrentUser(nextProfiles.find((profile) => profile.id === currentUserId) ?? null);
+        setPosts((currentPosts) =>
+          currentPosts.map((post) => ({
+            ...post,
+            author: post.author ? profileMap.get(post.author.id) ?? post.author : null,
+            comments: post.comments.map((comment) => ({
+              ...comment,
+              author: comment.author ? profileMap.get(comment.author.id) ?? comment.author : null,
+            })),
+          })),
+        );
+      } catch {
+        // Ignore transient realtime sync errors.
+      }
+    };
+
+    const refreshSinglePostById = async (postId: string | null | undefined) => {
+      if (!postId) {
+        return;
+      }
+
+      try {
+        const nextPost = await fetchPostById(postId, currentUserId);
+        if (!nextPost) {
+          setPosts((currentPosts) => currentPosts.filter((post) => post.id !== postId));
+          return;
+        }
+        upsertPostLocally(nextPost);
+      } catch {
+        // Ignore transient realtime sync errors.
+      }
+    };
+
+    const handlePostChange = async (payload: any) => {
+      if (payload.eventType === 'DELETE') {
+        const deletedPostId = payload.old?.id as string | undefined;
+        if (deletedPostId) {
+          setPosts((currentPosts) => currentPosts.filter((post) => post.id !== deletedPostId));
+        }
+        return;
+      }
+
+      await refreshSinglePostById((payload.new?.id as string | undefined) ?? null);
+    };
+
+    const handleLikeOrCommentChange = async (payload: any) => {
+      const postId =
+        (payload.new?.post_id as string | undefined) ??
+        (payload.old?.post_id as string | undefined) ??
+        null;
+      await refreshSinglePostById(postId);
+    };
+
+    const refreshFollowsOnly = async () => {
+      try {
+        const nextFollows = await fetchFollows();
+        setFollows(nextFollows);
+      } catch {
+        // Ignore transient realtime sync errors.
+      }
+    };
+
     const channel = supabase
       .channel('public-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, refreshAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, refreshAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, refreshAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, refreshAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, refreshProfilesOnly)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, handlePostChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, handleLikeOrCommentChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, handleLikeOrCommentChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, refreshFollowsOnly)
       .subscribe();
 
     return () => {
@@ -476,8 +629,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const cleanCaption = caption.trim();
-    if (!cleanCaption || !imageUri) {
-      return { ok: false, message: 'Selecciona imagen y escribe caption.' };
+    if (!imageUri) {
+      return { ok: false, message: 'Selecciona una imagen para publicar.' };
     }
 
     try {
@@ -587,6 +740,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return { ok: true };
+  };
+
+  const deletePost = async (postId: string): Promise<Result> => {
+    if (!hasPermission('admin')) {
+      return { ok: false, message: 'Solo el administrador puede eliminar publicaciones.' };
+    }
+
+    const previousPosts = posts;
+    const postToDelete = previousPosts.find((post) => post.id === postId) ?? null;
+    setPosts((currentPosts) => currentPosts.filter((post) => post.id !== postId));
+
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) {
+      setPosts(previousPosts);
+      return { ok: false, message: error.message };
+    }
+
+    if (postToDelete) {
+      const objectPath = getStorageObjectPathFromPublicUrl(postToDelete.imageUrl, 'posts');
+      if (objectPath) {
+        const { error: storageError } = await supabase.storage.from('posts').remove([objectPath]);
+        if (storageError && !/not found/i.test(storageError.message)) {
+          return { ok: true, message: 'Publicacion eliminada. El archivo en storage no se pudo borrar.' };
+        }
+      }
+    }
+
+    return { ok: true, message: 'Publicacion eliminada.' };
+  };
+
+  const deleteComment = async (postId: string, commentId: string): Promise<Result> => {
+    if (!hasPermission('admin')) {
+      return { ok: false, message: 'Solo el administrador puede eliminar comentarios.' };
+    }
+
+    const previousPosts = posts;
+    setPosts((currentPosts) =>
+      currentPosts.map((post) => {
+        if (post.id !== postId) {
+          return post;
+        }
+        return {
+          ...post,
+          comments: post.comments.filter((comment) => comment.id !== commentId),
+        };
+      }),
+    );
+
+    const { error } = await supabase.from('comments').delete().eq('id', commentId);
+    if (error) {
+      setPosts(previousPosts);
+      return { ok: false, message: error.message };
+    }
+
+    return { ok: true, message: 'Comentario eliminado.' };
   };
 
   const isFollowing = (targetUserId: string) => {
@@ -733,6 +941,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isReady,
       isConfigured: isSupabaseConfigured,
       isAuthenticated: Boolean(session?.user && currentUser),
+      isAdmin,
       isPasswordRecovery,
       errorMessage,
       currentUser,
@@ -750,10 +959,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createPost,
       toggleLike,
       addComment,
+      deletePost,
+      deleteComment,
       toggleFollow,
       isFollowing,
       followerCount,
       followingCount,
+      hasPermission,
       updateProfile,
       updateTheme,
       updateAvatar,
@@ -762,6 +974,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isReady,
       session?.user,
       currentUser,
+      isAdmin,
       isPasswordRecovery,
       errorMessage,
       profiles,

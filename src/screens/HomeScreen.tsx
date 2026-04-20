@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -13,7 +12,6 @@ export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
   const lastAutoRefreshAt = useRef(0);
-  const lastFocusRefreshAt = useRef(0);
 
   const onRefresh = useCallback(async () => {
     if (refreshing) {
@@ -24,16 +22,6 @@ export function HomeScreen() {
     await refreshAll();
     setRefreshing(false);
   }, [refreshAll, refreshing]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const now = Date.now();
-      if (!refreshing && now - lastFocusRefreshAt.current > 3000) {
-        lastFocusRefreshAt.current = now;
-        void onRefresh();
-      }
-    }, [onRefresh, refreshing]),
-  );
 
   return (
     <FlatList

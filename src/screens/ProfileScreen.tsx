@@ -1,12 +1,12 @@
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
 import { Alert, FlatList, Image, Pressable, RefreshControl, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Avatar } from '../components/Avatar';
 import { useApp } from '../context/AppContext';
 
 export function ProfileScreen() {
-  const { currentUser, posts, refreshAll, logout, followerCount, followingCount, updateProfile, updateAvatar, updateTheme, themeColors } = useApp();
+  const { currentUser, isAdmin, posts, refreshAll, logout, followerCount, followingCount, updateProfile, updateAvatar, updateTheme, themeColors } = useApp();
   const [fullName, setFullName] = useState(currentUser?.fullName ?? '');
   const [username, setUsername] = useState(currentUser?.username ?? '');
   const [bio, setBio] = useState(currentUser?.bio ?? '');
@@ -14,7 +14,6 @@ export function ProfileScreen() {
   const [showOptions, setShowOptions] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const lastAutoRefreshAt = useRef(0);
-  const lastFocusRefreshAt = useRef(0);
 
   useEffect(() => {
     setFullName(currentUser?.fullName ?? '');
@@ -36,16 +35,6 @@ export function ProfileScreen() {
     await refreshAll();
     setRefreshing(false);
   }, [refreshAll, refreshing]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const now = Date.now();
-      if (!refreshing && now - lastFocusRefreshAt.current > 3000) {
-        lastFocusRefreshAt.current = now;
-        void onRefresh();
-      }
-    }, [onRefresh, refreshing]),
-  );
 
   const totalLikes = myPosts.reduce((sum, post) => sum + post.likeCount, 0);
   const followers = currentUser ? followerCount(currentUser.id) : 0;
@@ -108,6 +97,11 @@ export function ProfileScreen() {
             <Avatar user={currentUser} size={72} />
             <View>
               <Text style={[styles.name, { color: themeColors.text }]}>{currentUser.fullName}</Text>
+              {isAdmin ? (
+                <View style={[styles.adminBadge, { backgroundColor: themeColors.primary }]}>
+                  <Text style={styles.adminBadgeText}>Administrador</Text>
+                </View>
+              ) : null}
               <Text style={[styles.username, { color: themeColors.muted }]}>@{currentUser.username}</Text>
               <Text style={[styles.bio, { color: themeColors.text }]}>{currentUser.bio || 'Sin bio'}</Text>
             </View>
@@ -208,7 +202,15 @@ export function ProfileScreen() {
           <Text style={[styles.section, { color: themeColors.text }]}>Tus publicaciones</Text>
         </View>
       }
-      renderItem={({ item }) => <Image source={{ uri: item.imageUrl }} style={[styles.postImage, { backgroundColor: themeColors.chip }]} />}
+      renderItem={({ item }) =>
+        item.mediaType === 'video' ? (
+          <View style={[styles.postImage, styles.videoPlaceholder, { backgroundColor: themeColors.chip }]}>
+            <Ionicons name="play-circle" size={30} color={themeColors.text} />
+          </View>
+        ) : (
+          <Image source={{ uri: item.imageUrl }} style={[styles.postImage, { backgroundColor: themeColors.chip }]} />
+        )
+      }
       ListEmptyComponent={<Text style={[styles.empty, { color: themeColors.muted }]}>Aun no tienes publicaciones.</Text>}
     />
   );
@@ -235,6 +237,19 @@ const styles = StyleSheet.create({
   bio: {
     marginTop: 4,
     maxWidth: 230,
+  },
+  adminBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  adminBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   secondaryButton: {
     marginTop: 10,
@@ -331,6 +346,10 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     borderRadius: 10,
+  },
+  videoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   empty: {
     textAlign: 'center',
